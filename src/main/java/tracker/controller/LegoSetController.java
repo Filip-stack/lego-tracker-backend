@@ -26,4 +26,9 @@ public class LegoSetController {
         return legoSetService.addLegoSet(legoSet);
     }
 
+    // Endpoint do automatycznego pobierania zestawu po jego numerze
+    @PostMapping("/fetch/{setNum}")
+    public LegoSet fetchFromRebrickable(@PathVariable String setNum) {
+        return legoSetService.fetchAndSaveSet(setNum);
+    }
 }
