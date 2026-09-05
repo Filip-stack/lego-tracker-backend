@@ -5,12 +5,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.client.HttpClientErrorException;
-
 import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
-
     @ExceptionHandler(HttpClientErrorException.NotFound.class)
     public ResponseEntity<Map<String, String>> handleRebrickableNotFound(HttpClientErrorException.NotFound ex) {
 
