@@ -38,4 +38,10 @@ public class LegoSetController {
         legoSetService.deleteLegoSet(id);
         return ResponseEntity.noContent().build();
     }
+
+    @GetMapping("/search")
+    public ResponseEntity<List<LegoSet>> searchLegoSets(@RequestParam String name) {
+        List<LegoSet> foundSets = legoSetService.searchLegoSetsByName(name);
+        return ResponseEntity.ok(foundSets);
+    }
 }

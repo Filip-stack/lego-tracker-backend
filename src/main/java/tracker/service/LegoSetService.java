@@ -71,4 +71,10 @@ public class LegoSetService {
 
         repository.deleteById(id);
     }
+
+    // wyszukiwanie po nazwie
+    public List<LegoSet> searchLegoSetsByName(String keyword)
+    {
+        return repository.findByNameContainingIgnoreCase(keyword);
+    }
 }
