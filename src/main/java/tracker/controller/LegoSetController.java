@@ -1,6 +1,7 @@
 package tracker.controller;
 
 
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import tracker.model.LegoSet;
 import tracker.service.LegoSetService;
@@ -30,5 +31,11 @@ public class LegoSetController {
     @PostMapping("/fetch/{setNum}")
     public LegoSet fetchFromRebrickable(@PathVariable String setNum) {
         return legoSetService.fetchAndSaveSet(setNum);
+    }
+
+    @DeleteMapping("/delete/{id}")
+    public ResponseEntity<Void> deleteLegoSet(@PathVariable("id") Long id) {
+        legoSetService.deleteLegoSet(id);
+        return ResponseEntity.noContent().build();
     }
 }

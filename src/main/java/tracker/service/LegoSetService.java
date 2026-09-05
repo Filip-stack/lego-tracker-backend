@@ -61,4 +61,14 @@ public class LegoSetService {
         return repository.save(legoSet);
 
     }
+
+    public void deleteLegoSet(Long id)
+    {
+        if(!repository.existsById(id))
+        {
+            throw new RuntimeException("Zestaw o podanym numerze nie istnieje w bazie");
+        }
+
+        repository.deleteById(id);
+    }
 }
