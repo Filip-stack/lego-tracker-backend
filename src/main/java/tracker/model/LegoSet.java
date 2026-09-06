@@ -2,6 +2,10 @@ package tracker.model;
 
 
 import jakarta.persistence.*;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.OneToMany;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "lego_sets")
@@ -17,6 +21,9 @@ public class LegoSet {
     private Integer themeId;
     private Integer numParts;
     private String setImgUrl;
+
+    @OneToMany(mappedBy = "legoSet", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<StoreOffer> offers = new ArrayList<>();
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -38,6 +45,14 @@ public class LegoSet {
 
     public String getSetImgUrl() { return setImgUrl; }
     public void setSetImgUrl(String setImgUrl) { this.setImgUrl = setImgUrl; }
+
+    public List<StoreOffer> getOffers() {
+        return offers;
+    }
+
+    public void setOffers(List<StoreOffer> offers) {
+        this.offers = offers;
+    }
 }
 
 
