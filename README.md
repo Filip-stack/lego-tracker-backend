@@ -12,7 +12,7 @@ A robust RESTful API built to track, manage, and catalog a collection of LEGO St
 This backend service is built using modern enterprise standards and a 3-tier architecture (Controller - Service - Repository):
 
 * **Java**
-* **Spring Boot 3** (Spring Web, Spring Data JPA, Scheduling)
+* **Spring Boot 4.1.1** (Spring Web, Spring Data JPA, Scheduling)
 * **PostgreSQL** (Database)
 * **Docker & Docker Compose** (Containerization)
 * **Jackson XML/JSON** (Data parsing and serialization)
