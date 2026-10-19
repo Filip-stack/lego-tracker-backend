@@ -15,7 +15,10 @@ public class LegoSet {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(unique = true, nullable = false)
     private String setNum;
+
+    @Column(nullable = false)
     private String name;
     private Integer releaseYear;
     private Integer themeId;

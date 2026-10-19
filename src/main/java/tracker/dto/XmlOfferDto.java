@@ -16,6 +16,9 @@ public class XmlOfferDto {
     @JacksonXmlProperty(localName = "url")
     private String url;
 
+    @JacksonXmlProperty(localName = "name")
+    private String name;
+
     public String getStoreName() {
         return storeName;
     }
@@ -46,5 +49,13 @@ public class XmlOfferDto {
 
     public void setUrl(String url) {
         this.url = url;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
     }
 }

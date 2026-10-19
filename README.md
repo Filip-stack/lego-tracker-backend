@@ -29,6 +29,16 @@ This backend service is built using modern enterprise standards and a 3-tier arc
 - Robust database UPSERT mechanism protecting against duplicate offer records.
 - Interactive API documentation available via Swagger UI.
 
+## Getting Started
+
+1. Copy `.env.example` to `.env` and fill in your values (the file is git-ignored):
+   - `REBRICKABLE_API_KEY` – get one at [rebrickable.com](https://rebrickable.com/api/) (Account → Settings → API),
+   - `DB_PASSWORD` – any password for the local PostgreSQL.
+2. Start the database: `docker compose up -d`
+3. Run the app: `./mvnw spring-boot:run`
+
+Both Spring Boot and Docker Compose read `.env` automatically. In production, set the same names as regular environment variables instead.
+
 ## Next Steps / Upcoming Features
 
 - [x] Implementing Data Transfer Objects (DTO) for incoming XML feeds and HTTP requests.

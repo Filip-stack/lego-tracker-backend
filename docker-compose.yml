@@ -6,8 +6,9 @@ services:
     container_name: lego_postgres
     restart: always
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: lego_password
+      # wartosci z pliku .env (docker-compose czyta go automatycznie)
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?ustaw DB_PASSWORD w pliku .env}
       POSTGRES_DB: lego_db
     ports:
       - "5432:5432"
