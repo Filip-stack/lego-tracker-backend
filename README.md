@@ -23,7 +23,7 @@ REST API for managing LEGO Star Wars sets and their store offers. Set details ca
 
 ## Requirements
 
-- Java version required by the Maven project
+- Java 25
 - Docker and Docker Compose
 - A Rebrickable API key for fetching set data
 
@@ -54,7 +54,7 @@ DB_PASSWORD=your-local-database-password
 
 On Windows, use `mvnw.cmd spring-boot:run`.
 
-The API is available under `/api/lego-sets`. Interactive documentation is available at `/swagger-ui/index.html` while the application is running.
+The API is available under `http://localhost:8080/api/lego-sets`. Interactive documentation is available at `http://localhost:8080/swagger-ui/index.html` while the application is running.
 
 ## Main endpoints
 
@@ -70,3 +70,60 @@ The API is available under `/api/lego-sets`. Interactive documentation is availa
 | `DELETE` | `/api/lego-sets/{id}` | Delete a set |
 
 See Swagger UI for request schemas and complete API details.
+
+## Example requests
+
+Fetch a set from Rebrickable by its set number:
+
+```bash
+curl -X POST http://localhost:8080/api/lego-sets/fetch/75192
+```
+
+Create a set manually:
+
+```bash
+curl -X POST http://localhost:8080/api/lego-sets \
+  -H "Content-Type: application/json" \
+  -d '{
+    "setNum": "75192-1",
+    "name": "Millennium Falcon",
+    "releaseYear": 2017,
+    "themeId": 158,
+    "numParts": 7541,
+    "setImgUrl": "https://example.com/75192.jpg"
+  }'
+```
+
+Search sets and request a later page:
+
+```bash
+curl "http://localhost:8080/api/lego-sets/search?name=Falcon&page=0&size=10"
+```
+
+Trigger an offer synchronization:
+
+```bash
+curl -X POST http://localhost:8080/api/lego-sets/sync
+```
+
+Paginated endpoints return Spring Data's `Page` response, including `content`, `totalElements`, `totalPages`, `number`, and `size`. Page numbering starts at `0`.
+
+## Data sources and synchronization
+
+Set details and the Star Wars catalog are fetched from Rebrickable. The Rebrickable API key is required for these operations. Offer synchronization runs daily and can also be started with `POST /api/lego-sets/sync`. The current al.to parser reads the bundled sample file `src/main/resources/alto_feed.xml`; configure a live feed source before relying on it for current store prices.
+
+## Error responses
+
+Validation errors, duplicate set numbers, and missing sets return an appropriate HTTP status with a JSON body, for example:
+
+```json
+{
+  "error": "Zestaw juz istnieje",
+  "message": "...",
+  "status": "409"
+}
+```
+
+## Database
+
+Hibernate updates the schema automatically on startup (`spring.jpa.hibernate.ddl-auto=update`). For persistent deployments, use a managed migration tool and back up the database before schema changes.
