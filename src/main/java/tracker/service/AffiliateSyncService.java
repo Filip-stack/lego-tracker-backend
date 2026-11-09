@@ -1,6 +1,5 @@
 package tracker.service;
 
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -8,7 +7,6 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
-import tracker.feed.PriceParser;
 import tracker.feed.FeedParser;
 import tracker.feed.SetNumberExtractor;
 import tracker.model.LegoSet;
@@ -17,11 +15,14 @@ import tracker.repository.LegoSetRepository;
 import tracker.repository.StoreOfferRepository;
 import tracker.dto.StandardizedOffer;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.LinkedHashMap;
 
 @Service
 public class AffiliateSyncService {
@@ -32,17 +33,15 @@ public class AffiliateSyncService {
     private final LegoSetRepository legoSetRepository;
     private final RestClient restClient;
     private final SetNumberExtractor setNumberExtractor;
-    private final PriceParser priceParser;
     private final List<FeedParser> feedParsers;
 
     public AffiliateSyncService(StoreOfferRepository storeOfferRepository,
                                 LegoSetRepository legoSetRepository,
                                 SetNumberExtractor setNumberExtractor,
-                                PriceParser priceParser, List<FeedParser> feedParsers) {
+                                List<FeedParser> feedParsers) {
         this.storeOfferRepository = storeOfferRepository;
         this.legoSetRepository = legoSetRepository;
         this.setNumberExtractor = setNumberExtractor;
-        this.priceParser = priceParser;
         this.feedParsers = feedParsers;
 
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
@@ -56,72 +55,108 @@ public class AffiliateSyncService {
 
     @Scheduled(fixedRate = 86400000)
     @Transactional
-    public void fetchOffersFromXml() {
-        log.info("Rozpoczynam synchronizację ofert ze wszystkich źródeł...");
+    public synchronized void fetchOffersFromXml() {
+        log.info("Rozpoczynam zoptymalizowaną synchronizację ofert ze wszystkich źródeł...");
 
         for (FeedParser parser : feedParsers) {
             log.info("Uruchamiam parser: {}", parser.getProviderName());
+            String providerName = parser.getProviderName();
 
-            // Pytamy parser o gotową listę (na razie feedUrl to atrapa, bo klasa czyta z resources)
-            List<StandardizedOffer> offers = parser.parse("atrapa-url", restClient);
+            List<StandardizedOffer> rawOffers = parser.parse("atrapa-url", restClient);
+            if (rawOffers == null || rawOffers.isEmpty()) {
+                log.info("Brak ofert z parsera: {}", providerName);
+                continue;
+            }
+
+            // KROK 1: Wyciągamy numery zestawów i mapujemy surowe oferty do sparsowanych rekordów
+            record ParsedItem(StandardizedOffer dto, String setNumber, String storeName) {}
+            record OfferKey(String setNumber, String storeName) {}
+            List<ParsedItem> validItems = new ArrayList<>();
+            Set<String> extractedSetNums = new HashSet<>();
+            Set<String> storeNames = new HashSet<>();
+
+            int skippedCount = 0;
+            for (StandardizedOffer dto : rawOffers) {
+                if (dto == null || dto.price() == null || dto.storeName() == null || dto.storeName().isBlank()) {
+                    skippedCount++;
+                    continue;
+                }
+                Optional<String> extractedNum = setNumberExtractor.extract(dto.name());
+                if (extractedNum.isPresent()) {
+                    String setNum = extractedNum.get();
+                    extractedSetNums.add(setNum);
+                    storeNames.add(dto.storeName());
+                    validItems.add(new ParsedItem(dto, setNum, dto.storeName()));
+                } else {
+                    skippedCount++;
+                }
+            }
+
+            // KROK 2: Masowe pobranie zestawów LEGO z bazy jednym zapytaniem (SQL IN)
+            if (validItems.isEmpty()) {
+                log.info("Brak poprawnych ofert do przetworzenia z parsera: {}", providerName);
+                continue;
+            }
+
+            Map<String, LegoSet> legoSetMap = legoSetRepository.findBySetNumIn(extractedSetNums)
+                    .stream()
+                    .collect(java.util.stream.Collectors.toMap(LegoSet::getSetNum, set -> set));
+
+            // KROK 3: Masowe pobranie istniejących ofert dla tego sklepu jednym zapytaniem
+            Map<OfferKey, StoreOffer> existingOffersMap = storeOfferRepository
+                    .findByStoreNameInAndLegoSet_SetNumIn(storeNames, extractedSetNums)
+                    .stream()
+                    .collect(java.util.stream.Collectors.toMap(
+                            offer -> new OfferKey(offer.getLegoSet().getSetNum(), offer.getStoreName()),
+                            offer -> offer,
+                            (existing, duplicate) -> existing));
 
             int successCount = 0;
             int failedCount = 0;
-            int skippedCount = 0;
             int batchSize = 500;
-            List<StoreOffer> batch = new ArrayList<>();
+            Map<OfferKey, StoreOffer> batch = new LinkedHashMap<>();
 
-            // Zmieniamy XmlOfferDto na StandardizedOffer
-            for (StandardizedOffer dto : offers) {
+            // KROK 4: Przetwarzanie w pamięci (Zero dodatkowych zapytań do bazy w pętli!)
+            for (ParsedItem item : validItems) {
                 try {
-                    // Wywołujemy nazwane metody z naszego rekordu (dto.name(), dto.price())
-                    Optional<String> extractedNum = setNumberExtractor.extract(dto.name());
-                    if (extractedNum.isEmpty()) {
+                    LegoSet legoSet = legoSetMap.get(item.setNumber());
+                    if (legoSet == null) {
                         skippedCount++;
-                        continue;
+                        continue; // Zestaw nie istnieje w bazie
                     }
 
-                    String setNumber = extractedNum.get();
-                    Optional<LegoSet> optionalSet = legoSetRepository.findBySetNum(setNumber);
+                    OfferKey key = new OfferKey(item.setNumber(), item.storeName());
+                    StoreOffer offer = existingOffersMap.get(key);
+                    if (offer == null) {
+                        offer = new StoreOffer();
+                        offer.setLegoSet(legoSet);
+                        offer.setStoreName(item.storeName());
+                        existingOffersMap.put(key, offer);
+                    }
 
-                    if (optionalSet.isPresent()) {
-                        LegoSet set = optionalSet.get();
-                        // Zauważ, że storeName też bierzemy z rekordu
-                        Optional<StoreOffer> existingOffer = storeOfferRepository.findByLegoSetAndStoreName(set, dto.storeName());
+                    offer.setPrice(item.dto().price());
+                    offer.setAffiliateUrl(item.dto().url());
+                    offer.setLastUpdated(LocalDateTime.now());
 
-                        StoreOffer offer = existingOffer.orElseGet(StoreOffer::new);
-                        offer.setLegoSet(set);
-                        offer.setStoreName(dto.storeName());
+                    batch.put(key, offer);
+                    successCount++;
 
-                        BigDecimal cleanPrice = priceParser.parse(dto.price())
-                                .orElseThrow(() -> new IllegalArgumentException("Nierozpoznany format ceny: " + dto.price()));
-
-                        offer.setPrice(cleanPrice);
-                        offer.setAffiliateUrl(dto.url());
-                        offer.setLastUpdated(LocalDateTime.now());
-
-                        batch.add(offer);
-                        successCount++;
-
-                        if (batch.size() >= batchSize) {
-                            storeOfferRepository.saveAll(batch);
-                            batch.clear();
-                        }
-                    } else {
-                        skippedCount++;
+                    if (batch.size() >= batchSize) {
+                        storeOfferRepository.saveAll(new ArrayList<>(batch.values()));
+                        batch.clear();
                     }
                 } catch (Exception ex) {
                     failedCount++;
-                    log.warn("Błąd przetwarzania oferty '{}': {}", dto.name(), ex.getMessage());
+                    log.warn("Błąd przetwarzania oferty '{}': {}", item.dto().name(), ex.getMessage());
                 }
             }
 
             if (!batch.isEmpty()) {
-                storeOfferRepository.saveAll(batch);
+                storeOfferRepository.saveAll(new ArrayList<>(batch.values()));
             }
 
             log.info("Zakończono {} -> Zapisano: {}, Pominięto: {}, Błędy: {}",
-                    parser.getProviderName(), successCount, skippedCount, failedCount);
+                    providerName, successCount, skippedCount, failedCount);
         }
     }
 }

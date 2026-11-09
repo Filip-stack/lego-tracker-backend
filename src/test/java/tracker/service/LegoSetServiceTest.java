@@ -1,24 +1,32 @@
 package tracker.service;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import tracker.dto.LegoSetRequest;
 import tracker.exception.DuplicateSetException;
 import tracker.exception.SetNotFoundException;
 import tracker.feed.SetNumberExtractor;
 import tracker.model.LegoSet;
 import tracker.repository.LegoSetRepository;
+
 import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull; // <-- Dodany brakujący import
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+
 @ExtendWith(MockitoExtension.class)
 public class LegoSetServiceTest {
 
@@ -26,22 +34,35 @@ public class LegoSetServiceTest {
     private LegoSetRepository repository;
 
     private LegoSetService service;
+
     @BeforeEach
     void setUp() {
         service = new LegoSetService(repository, new SetNumberExtractor(), "test-api-key");
     }
-    @Test
+
+    @Test // <-- Poprawiono zduplikowane @Test @Test
     void shouldReturnAllLegoSets() {
-        // given, zmyslone dane
-        LegoSet dummySet = new LegoSet();
-        dummySet.setSetNum("12345-1");
-        dummySet.setName("testowy sokol milenium");
+        // Przygotowanie danych
+        LegoSet legoSet = new LegoSet();
+        legoSet.setSetNum("75192-1");
 
-        when(repository.findAll()).thenReturn(List.of(dummySet));
+        // Tworzymy fałszywe żądanie paginacji i stronę wyników z jednym zestawem
+        Pageable pageable = PageRequest.of(0, 20);
+        Page<LegoSet> mockPage = new PageImpl<>(List.of(legoSet));
 
-        List<LegoSet> result = service.getAllLegoSets();
-        assertEquals(1, result.size());
-        assertEquals("testowy sokol milenium", result.get(0).getName());
+        // Uczymy mocka repozytorium, aby zwracał stronę
+        when(repository.findAll(pageable)).thenReturn(mockPage);
+
+        // Wywołanie metody w serwisie (używamy zmiennej 'service', a nie 'legoSetService')
+        Page<LegoSet> result = service.getAllLegoSets(pageable);
+
+        // Asercje - wyciągamy listę ze strony za pomocą .getContent()
+        assertNotNull(result);
+        assertEquals(1, result.getContent().size());
+        assertEquals("75192-1", result.getContent().get(0).getSetNum());
+
+        // Weryfikujemy, czy repozytorium faktycznie zostało wywołane z obiektem pageable
+        verify(repository).findAll(pageable);
     }
 
     @Test

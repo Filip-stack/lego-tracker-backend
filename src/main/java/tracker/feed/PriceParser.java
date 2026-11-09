@@ -33,9 +33,16 @@ public class PriceParser {
             }
 
             // 3. Rozdzielamy część całkowitą od groszy
+            String fractionalPart = cleanStr.substring(decimalSeparatorIndex + 1);
+
+            // KRYTYCZNA POPRAWKA: Jeśli "grosze" to 3 cyfry, to w rzeczywistości był to separator tysięcy (np. "1.299")
+            if (fractionalPart.length() == 3) {
+                String fullIntegerNumber = cleanStr.replaceAll("[.,]", "");
+                return Optional.of(new BigDecimal(fullIntegerNumber));
+            }
+
             // Usuwamy wszystkie kropki i przecinki z części całkowitej (separatory tysięcy)
             String integerPart = cleanStr.substring(0, decimalSeparatorIndex).replaceAll("[.,]", "");
-            String fractionalPart = cleanStr.substring(decimalSeparatorIndex + 1);
 
             // 4. Łączymy w idealny format akceptowany przez BigDecimal
             String finalNumber = integerPart + "." + fractionalPart;

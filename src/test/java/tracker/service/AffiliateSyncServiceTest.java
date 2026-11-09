@@ -8,7 +8,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import tracker.dto.StandardizedOffer;
 import tracker.feed.FeedParser;
-import tracker.feed.PriceParser;
 import tracker.feed.SetNumberExtractor;
 import tracker.model.LegoSet;
 import tracker.model.StoreOffer;
@@ -17,12 +16,12 @@ import tracker.repository.StoreOfferRepository;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -43,7 +42,7 @@ class AffiliateSyncServiceTest {
     void setUp() {
         when(feedParser.getProviderName()).thenReturn("TEST");
         service = new AffiliateSyncService(storeOfferRepository, legoSetRepository,
-                new SetNumberExtractor(), new PriceParser(), List.of(feedParser));
+                new SetNumberExtractor(), List.of(feedParser));
     }
 
     @Test
@@ -53,11 +52,12 @@ class AffiliateSyncServiceTest {
         falcon.setSetNum("75192-1");
 
         when(feedParser.parse(anyString(), any())).thenReturn(List.of(
-                new StandardizedOffer("LEGO Star Wars 75192 Sokół Millennium", "3 499,99 zł", "https://al.to/75192", "al.to")
+                new StandardizedOffer("LEGO Star Wars 75192 Millennium Falcon", new BigDecimal("3499.99"), "https://al.to/75192", "al.to")
         ));
+        when(legoSetRepository.findBySetNumIn(anyCollection())).thenReturn(List.of(falcon));
+        when(storeOfferRepository.findByStoreNameInAndLegoSet_SetNumIn(anyCollection(), anyCollection()))
+                .thenReturn(List.of());
         // numer z tytulu oferty musi trafic w format, w jakim zestaw lezy w bazie
-        when(legoSetRepository.findBySetNum("75192-1")).thenReturn(Optional.of(falcon));
-        when(storeOfferRepository.findByLegoSetAndStoreName(falcon, "al.to")).thenReturn(Optional.empty());
 
         service.fetchOffersFromXml();
 
@@ -74,9 +74,9 @@ class AffiliateSyncServiceTest {
     @Test
     void shouldSkipOfferWhenSetIsNotInDatabase() {
         when(feedParser.parse(anyString(), any())).thenReturn(List.of(
-                new StandardizedOffer("LEGO Technic 42115 Lamborghini", "1499,00 zł", "https://al.to/42115", "al.to")
+                new StandardizedOffer("LEGO Technic 42115 Lamborghini", new BigDecimal("1499.00"), "https://al.to/42115", "al.to")
         ));
-        when(legoSetRepository.findBySetNum("42115-1")).thenReturn(Optional.empty());
+        when(legoSetRepository.findBySetNumIn(anyCollection())).thenReturn(List.of());
 
         service.fetchOffersFromXml();
 

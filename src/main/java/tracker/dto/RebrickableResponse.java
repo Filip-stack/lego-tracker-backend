@@ -5,7 +5,7 @@ import java.util.List;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record RebrickableResponse(
+        String next,
         List<RebrickableSetDto> results
 ) {
-
 }

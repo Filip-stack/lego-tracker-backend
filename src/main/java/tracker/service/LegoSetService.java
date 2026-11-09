@@ -3,6 +3,8 @@ package tracker.service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
@@ -15,9 +17,11 @@ import tracker.feed.SetNumberExtractor;
 import tracker.model.LegoSet;
 import tracker.repository.LegoSetRepository;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 public class LegoSetService {
@@ -38,8 +42,9 @@ public class LegoSetService {
         this.restClient = RestClient.create("https://rebrickable.com/api/v3");
     }
 
-    public List<LegoSet> getAllLegoSets() {
-        return repository.findAll();
+    // Zwracamy Page zamiast List
+    public Page<LegoSet> getAllLegoSets(Pageable pageable) {
+        return repository.findAll(pageable);
     }
 
     public LegoSet getLegoSet(Long id) {
@@ -64,8 +69,6 @@ public class LegoSetService {
         return repository.save(legoSet);
     }
 
-    // w bazie trzymamy numer w formacie Rebrickable ("75192-1") - tak samo jak
-    // zwraca go SetNumberExtractor przy synchronizacji ofert z feedow
     private String toCanonical(String setNum) {
         return setNumberExtractor.normalize(setNum)
                 .orElseThrow(() -> new IllegalArgumentException("Niepoprawny numer zestawu: " + setNum));
@@ -74,7 +77,6 @@ public class LegoSetService {
     public LegoSet fetchAndSaveSet(String setNum) {
         String apiSetNum = toCanonical(setNum);
 
-        // Unikamy duplikatów
         Optional<LegoSet> existingSet = repository.findBySetNum(apiSetNum);
         if (existingSet.isPresent()) {
             return existingSet.get();
@@ -101,47 +103,69 @@ public class LegoSetService {
         return repository.save(legoSet);
     }
 
-    // NOWA METODA: Masowe pobieranie zestawów Star Wars
     @Transactional
     public void fetchStarWarsSets() {
         log.info("Rozpoczynam masowe pobieranie zestawów Star Wars z API...");
 
+        Set<String> existingSetNums = repository.findAllSetNums();
+        List<LegoSet> setsToSave = new ArrayList<>();
+
+        URI currentUri = URI.create("https://rebrickable.com/api/v3/lego/sets/?theme_id=158&page_size=1000");
+
         try {
-            RebrickableResponse response = restClient.get()
-                    .uri("/lego/sets/?theme_id=158&page_size=1000")
-                    .header("Authorization", "key " + apiKey)
-                    .retrieve()
-                    .body(RebrickableResponse.class);
+            while (currentUri != null) {
+                RebrickableResponse response = restClient.get()
+                        .uri(currentUri)
+                        .header("Authorization", "key " + apiKey)
+                        .retrieve()
+                        .body(RebrickableResponse.class);
 
-            if (response != null && response.results() != null) {
-                List<LegoSet> setsToSave = new ArrayList<>();
+                if (response != null && response.results() != null) {
+                    for (RebrickableSetDto dto : response.results()) {
+                        String setNum = dto.setNum();
 
-                for (RebrickableSetDto dto : response.results()) {
-                    // Rebrickable zwraca juz numer w docelowym formacie, np. "75192-1"
-                    String setNum = dto.setNum();
+                        if (!existingSetNums.contains(setNum)) {
+                            LegoSet legoSet = new LegoSet();
+                            legoSet.setSetNum(setNum);
+                            legoSet.setName(dto.name());
+                            legoSet.setReleaseYear(dto.releaseYear());
+                            legoSet.setThemeId(dto.themeId());
+                            legoSet.setNumParts(dto.numParts() != null ? dto.numParts() : 0);
+                            legoSet.setSetImgUrl(dto.setImgUrl());
 
-                    if (repository.findBySetNum(setNum).isEmpty()) {
-                        LegoSet legoSet = new LegoSet();
-                        legoSet.setSetNum(setNum);
-                        legoSet.setName(dto.name());
-                        legoSet.setReleaseYear(dto.releaseYear());
-                        legoSet.setThemeId(dto.themeId());
-                        legoSet.setNumParts(dto.numParts() != null ? dto.numParts() : 0);
-                        legoSet.setSetImgUrl(dto.setImgUrl());
-
-                        setsToSave.add(legoSet);
+                            setsToSave.add(legoSet);
+                            existingSetNums.add(setNum);
+                        }
                     }
-                }
 
-                if (!setsToSave.isEmpty()) {
-                    repository.saveAll(setsToSave);
-                    log.info("Zapisano {} nowych zestawów Star Wars!", setsToSave.size());
+                    String nextUrlString = response.next();
+                    if (nextUrlString != null && !nextUrlString.isBlank()) {
+                        URI nextUri = URI.create(nextUrlString);
+
+                        if ("rebrickable.com".equals(nextUri.getHost())) {
+                            currentUri = nextUri;
+                        } else {
+                            log.warn("Odrzucono niebezpieczny host w linku paginacji: {}", nextUri.getHost());
+                            currentUri = null;
+                        }
+                    } else {
+                        currentUri = null;
+                    }
                 } else {
-                    log.info("Wszystkie zestawy Star Wars są już w bazie.");
+                    currentUri = null;
                 }
             }
+
+            if (!setsToSave.isEmpty()) {
+                repository.saveAll(setsToSave);
+                log.info("Zapisano {} nowych zestawów Star Wars!", setsToSave.size());
+            } else {
+                log.info("Wszystkie zestawy Star Wars są już w bazie.");
+            }
+
         } catch (Exception e) {
-            log.error("Błąd podczas pobierania zestawów Star Wars: {}", e.getMessage());
+            log.error("Krytyczny błąd podczas pobierania zestawów Star Wars: {}", e.getMessage());
+            throw new RuntimeException("Nie udało się pobrać zestawów Star Wars z API", e);
         }
     }
 
@@ -152,7 +176,8 @@ public class LegoSetService {
         repository.deleteById(id);
     }
 
-    public List<LegoSet> searchLegoSetsByName(String keyword) {
-        return repository.findByNameContainingIgnoreCase(keyword);
+    // Wyszukiwanie zwraca Page zamiast List
+    public Page<LegoSet> searchLegoSetsByName(String keyword, Pageable pageable) {
+        return repository.findByNameContainingIgnoreCase(keyword, pageable);
     }
 }

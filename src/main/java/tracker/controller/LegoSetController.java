@@ -1,9 +1,11 @@
 package tracker.controller;
 
-
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -11,11 +13,11 @@ import tracker.dto.LegoSetRequest;
 import tracker.model.LegoSet;
 import tracker.service.AffiliateSyncService;
 import tracker.service.LegoSetService;
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/lego-sets")
 public class LegoSetController {
+
     private final LegoSetService legoSetService;
     private final AffiliateSyncService affiliateSyncService;
 
@@ -24,10 +26,10 @@ public class LegoSetController {
         this.affiliateSyncService = affiliateSyncService;
     }
 
-    // endpoint do pobierania wszystkich zestawow
+    // Endpoint pobiera dane stronami, domyślnie 20 elementów na stronę
     @GetMapping
-    public List<LegoSet> findAll() {
-        return legoSetService.getAllLegoSets();
+    public Page<LegoSet> findAll(@PageableDefault(size = 20) Pageable pageable) {
+        return legoSetService.getAllLegoSets(pageable);
     }
 
     @GetMapping("/{id}")
@@ -35,14 +37,12 @@ public class LegoSetController {
         return legoSetService.getLegoSet(id);
     }
 
-    // endpoint do dodawania nowego zestawu
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public LegoSet addLegoSet(@Valid @RequestBody LegoSetRequest request) {
         return legoSetService.addLegoSet(request);
     }
 
-    // Endpoint do automatycznego pobierania zestawu po jego numerze
     @PostMapping("/fetch/{setNum}")
     public LegoSet fetchFromRebrickable(
             @PathVariable
@@ -57,7 +57,6 @@ public class LegoSetController {
         return ResponseEntity.ok("Zakończono pobieranie zestawów Star Wars z API");
     }
 
-    // mozliwosc synchronizacji ofert z feedu na żądanie
     @PostMapping("/sync")
     public ResponseEntity<String> triggerSync() {
         affiliateSyncService.fetchOffersFromXml();
@@ -70,8 +69,11 @@ public class LegoSetController {
         return ResponseEntity.noContent().build();
     }
 
+    // Wyszukiwanie również zyskało paginację
     @GetMapping("/search")
-    public List<LegoSet> searchLegoSets(@RequestParam @NotBlank String name) {
-        return legoSetService.searchLegoSetsByName(name.trim());
+    public Page<LegoSet> searchLegoSets(
+            @RequestParam @NotBlank String name,
+            @PageableDefault(size = 20) Pageable pageable) {
+        return legoSetService.searchLegoSetsByName(name.trim(), pageable);
     }
 }

@@ -3,24 +3,27 @@ package tracker.model;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "store_offers")
+@Table(name = "store_offers", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_store_offer_set_store", columnNames = {"lego_set_id", "store_name"})
+})
 public class StoreOffer {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "store_name", nullable = false)
     private String storeName;
+    @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal price;
     private String affiliateUrl;
     private LocalDateTime lastUpdated;
 
     // relacja n:m
     @ManyToOne
-    @JoinColumn(name = "lego_set_id")
+    @JoinColumn(name = "lego_set_id", nullable = false)
     @JsonIgnore
     private LegoSet legoSet;
     public StoreOffer() {
